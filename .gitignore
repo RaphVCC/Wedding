@@ -43,3 +43,5 @@ backend/static/uploads/*
 build/
 *.egg-info/
 
+# Frontend build output (served by backend)
+backend/frontend_dist/

@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pathlib import Path
 from app.core.config import settings
 from app.core.database import engine, Base
@@ -13,7 +14,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Wedding Website API")
 
-# CORS middleware
+# CORS middleware - menos restritivo já que está tudo no mesmo domínio
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -22,7 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files
+# Static files for uploads
 static_dir = Path(settings.STATIC_DIR)
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -37,6 +38,25 @@ app.include_router(gallery.router)
 app.include_router(gifts.router)
 app.include_router(rsvp.router)
 app.include_router(upload.router)
+
+# Serve frontend static files
+frontend_dist = Path(__file__).parent.parent.parent / "frontend_dist"
+if frontend_dist.exists():
+    # Serve static assets (JS, CSS, images, etc.)
+    app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
+    
+    # Serve index.html for all non-API routes (SPA routing)
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str, request: Request):
+        # Don't serve frontend for API routes
+        if full_path.startswith(("api/", "auth/", "static/", "docs", "openapi.json")):
+            return {"detail": "Not found"}
+        
+        # Serve index.html for all other routes
+        index_path = frontend_dist / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        return {"detail": "Frontend not built"}
 
 
 @app.on_event("startup")
@@ -58,9 +78,4 @@ async def startup_event():
             db.commit()
     finally:
         db.close()
-
-
-@app.get("/")
-def root():
-    return {"message": "Wedding Website API"}
 
